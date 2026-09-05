@@ -22,7 +22,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "oled.h"
+#include "lightsensor.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,7 +44,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-#include "oled.h"
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -54,7 +55,18 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+static uint8_t LightSensor_Debounce(uint8_t target, uint16_t count, uint16_t interval_ms)
+{
+    for (uint16_t i = 0; i < count; i++)
+    {
+        HAL_Delay(interval_ms);
+        if (LightSensor_Get() != target)
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
 /* USER CODE END 0 */
 
 /**
@@ -65,9 +77,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-  OLED_Init();
-  OLED_Clear();
-  OLED_ShowString(0,0,"PB8 PB9 OLED");
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -76,9 +86,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  HAL_Init();
-  SystemClock_Config();
-  MX_GPIO_Init();
+
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -91,13 +99,38 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   /* USER CODE BEGIN 2 */
-
+  OLED_Init();
+  LightSensor_Init();
+  OLED_ShowString(1, 1, "Auto Controller");
+  uint8_t last_status = 1;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    uint8_t sensor = LightSensor_Get();
+
+    if (sensor == 0 && last_status == 1)
+    {
+      if (LightSensor_Debounce(0, 2, 250))
+      {
+        OLED_Clear();
+        OLED_ShowString(1, 1, "Auto Controller");
+        OLED_ShowString(2, 1, "Welcome!!!");
+        last_status = 0;
+      }
+    }
+    else if (sensor == 1 && last_status == 0)
+    {
+      if (LightSensor_Debounce(1, 4, 500))
+      {
+        OLED_Clear();
+        OLED_ShowString(1, 1, "Auto Controller");
+        OLED_ShowString(2, 1, "Bye!!!");
+        last_status = 1;
+      }
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
