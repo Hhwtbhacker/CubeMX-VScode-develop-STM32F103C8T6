@@ -47,6 +47,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     Hardware/oled.c
     Hardware/lightsensor.c
+    Hardware/rtc.c
 )
 
 # Add include paths

@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include "oled.h"
 #include "lightsensor.h"
+#include "rtc.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,6 +56,28 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/* 把当前时间格式化为 "HH:MM:SS" 显示在指定行/列 */
+static void OLED_ShowTime(uint8_t Line, uint8_t Column)
+{
+    uint8_t hour, minute, second;
+    char buf[9];
+
+    RTC_GetTime(&hour, &minute, &second);
+
+    buf[0] = (char)('0' + hour / 10);
+    buf[1] = (char)('0' + hour % 10);
+    buf[2] = ':';
+    buf[3] = (char)('0' + minute / 10);
+    buf[4] = (char)('0' + minute % 10);
+    buf[5] = ':';
+    buf[6] = (char)('0' + second / 10);
+    buf[7] = (char)('0' + second % 10);
+    buf[8] = '\0';
+
+    OLED_ShowString(Line, Column, buf);
+}
+
+/* 光敏消抖：连续 count 次读到的值都等于 target 才算数 */
 static uint8_t LightSensor_Debounce(uint8_t target, uint16_t count, uint16_t interval_ms)
 {
     for (uint16_t i = 0; i < count; i++)
@@ -66,6 +89,40 @@ static uint8_t LightSensor_Debounce(uint8_t target, uint16_t count, uint16_t int
         }
     }
     return 1;
+}
+
+/* 在第 3 行显示状态文字：先用空格清空整行，避免长短文字切换时字符残留重叠 */
+static void OLED_ShowStatus(const char *msg)
+{
+    OLED_ShowString(3, 1, "                ");   /* 16 个空格，清空第 3 行 */
+    OLED_ShowString(3, 4, (char *)msg);         /* 第 4 列开始显示 */
+}
+
+/* 在第 4 行显示光照强度：Lux: xxxxx（单位 lux，固定宽度避免残留） */
+static void OLED_ShowLux(void)
+{
+    uint32_t lux = (uint32_t)LightSensor_GetLux();
+    char buf[15];
+
+    if (lux > 99999U) { lux = 99999U; }   /* 截断到 5 位 */
+
+    buf[0] = 'L';
+    buf[1] = 'u';
+    buf[2] = 'x';
+    buf[3] = ':';
+    buf[4] = ' ';
+    buf[5] = (char)('0' + (lux / 10000) % 10);
+    buf[6] = (char)('0' + (lux / 1000) % 10);
+    buf[7] = (char)('0' + (lux / 100) % 10);
+    buf[8] = (char)('0' + (lux / 10) % 10);
+    buf[9] = (char)('0' + lux % 10);
+    buf[10] = ' ';
+    buf[11] = 'l';
+    buf[12] = 'x';
+    buf[13] = ' ';
+    buf[14] = '\0';
+
+    OLED_ShowString(4, 1, buf);   /* 第 4 行第 1 列，长度固定无残留 */
 }
 /* USER CODE END 0 */
 
@@ -101,33 +158,51 @@ int main(void)
   /* USER CODE BEGIN 2 */
   OLED_Init();
   LightSensor_Init();
-  OLED_ShowString(1, 1, "Auto Controller");
-  uint8_t last_status = 1;
+  RTC_Init();
+  OLED_ShowString(1, 3, "Current Time");
+  uint8_t last_second = 0xFF;   // 记录上次显示的秒，秒变化时才刷新
+  uint8_t last_status = 1;      // 光敏状态：1=亮，0=暗
+  uint32_t last_lux_tick = 0;   // 上次刷新光照强度的时间
+  OLED_ShowLux();               // 先显示一次光照强度
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    uint8_t hour, minute, second;
     uint8_t sensor = LightSensor_Get();
 
+    RTC_GetTime(&hour, &minute, &second);
+
+    if (second != last_second)
+    {
+      OLED_ShowTime(2, 5);   // 第 2 行居中显示 HH:MM:SS
+      last_second = second;
+    }
+
+    /* 每 500ms 刷新一次第 4 行的光照强度 */
+    if (HAL_GetTick() - last_lux_tick >= 500)
+    {
+      OLED_ShowLux();
+      last_lux_tick = HAL_GetTick();
+    }
+
+    /* 光线变暗（被遮挡）→ 第 3 行显示 Welcome */
     if (sensor == 0 && last_status == 1)
     {
       if (LightSensor_Debounce(0, 2, 250))
       {
-        OLED_Clear();
-        OLED_ShowString(1, 1, "Auto Controller");
-        OLED_ShowString(2, 1, "Welcome!!!");
+        OLED_ShowStatus(" Welcome");
         last_status = 0;
       }
     }
+    /* 光线变亮 → 第 3 行显示 Bye（补空格清除 Welcome 的残留字符） */
     else if (sensor == 1 && last_status == 0)
     {
       if (LightSensor_Debounce(1, 4, 500))
       {
-        OLED_Clear();
-        OLED_ShowString(1, 1, "Auto Controller");
-        OLED_ShowString(2, 1, "Bye!!!");
+        OLED_ShowStatus("   Bye");
         last_status = 1;
       }
     }
