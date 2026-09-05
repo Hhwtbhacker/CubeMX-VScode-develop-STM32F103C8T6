@@ -1,0 +1,1 @@
+这是一个用STM32CubeMX创建的基于HAL库的项目，在VS Code上开发。
